@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Live Feed</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { color: #0088cc; }
+        #feed {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            word-wrap: break-word;
+        }
+        .card img, .card video {
+            width: 100%;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .time {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
+            text-align: right;
+        }
+        .caption {
+            margin-top: 8px;
+            font-weight: bold;
+        }
+    </style>
+    <!-- Socket.io ক্লায়েন্ট পাথ আপডেট করা হয়েছে -->
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+    <h1>📢 Telegram Live Feed</h1>
+    <div id="feed">
+        <div class="card">
+            <p>বটে কোনো মেসেজ পাঠালে তা এখানে লাইভ দেখাবে...</p>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const feed = document.getElementById('feed');
+
+        socket.on('tg-message', (data) => {
+            const card = document.createElement('div');
+            card.className = 'card';
+
+            let contentHTML = '';
+
+            if (data.type === 'text') {
+                contentHTML = `<p>${data.content}</p>`;
+            } else if (data.type === 'image') {
+                contentHTML = `
+                    <img src="${data.content}" alt="Telegram Image">
+                    ${data.caption ? `<p class="caption">${data.caption}</p>` : ''}
+                `;
+            } else if (data.type === 'video') {
+                contentHTML = `
+                    <video src="${data.content}" controls></video>
+                    ${data.caption ? `<p class="caption">${data.caption}</p>` : ''}
+                `;
+            }
+
+            card.innerHTML = `${contentHTML}<div class="time">${data.time}</div>`;
+            feed.insertBefore(card, feed.firstChild);
+        });
+    </script>
+</body>
+</html>
