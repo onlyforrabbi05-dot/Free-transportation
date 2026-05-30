@@ -35,6 +35,56 @@ io.on('connection', (socket) => {
         if (data.password === ADMIN_PASSWORD) {
             // হিস্টোরি অ্যারে থেকে ওই আইডি-র মেসেজটি বাদ দেওয়া
             messageHistory = messageHistory.filter(msg => msg.id !== data.id);
+            // সব কানেক্টেড ব্রাউজারকে জানানো যেন ওরাও স্ক্রিন থেকে ডিলিট করে দেয়
+            io.emit('message-deleted', data.id);
+        } else {
+            socket.emit('delete-error', 'ভুল পাসওয়ার্ড! আপনি ডিলিট করতে পারবেন না।');
+        }
+    });
+});
+
+bot.on('message', async (msg) => {
+    // প্রতিটি মেসেজের জন্য একটি ইউনিক আইডি তৈরি
+    let uniqueId = msg.message_id + '-' + Date.now();
+
+    let data = {
+        id: uniqueId,
+        type: 'text',
+        content: msg.text || '',
+        caption: msg.caption || '',
+        time: new Date().toLocaleTimeString()
+    };
+
+    try {
+        if (msg.photo) {
+            const fileId = msg.photo[msg.photo.length - 1].file_id;
+            const fileLink = await bot.getFileLink(fileId);
+            data.type = 'image';
+            data.content = fileLink;
+        }
+        else if (msg.video) {
+            const fileId = msg.video.file_id;
+            const fileLink = await bot.getFileLink(fileId);
+            data.type = 'video';
+            data.content = fileLink;
+        }
+
+        if (!data.content && !data.caption) return;
+
+        messageHistory.unshift(data);
+        if (messageHistory.length > MAX_HISTORY) {
+            messageHistory.pop();
+        }
+
+        io.emit('tg-message', data);
+    } catch (error) {
+        console.error("Error processing telegram message:", error);
+    }
+});
+
+server.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});            messageHistory = messageHistory.filter(msg => msg.id !== data.id);
             
             // সব কানেক্টেড ব্রাউজারকে জানানো যেন তারাও স্ক্রিন থেকে ডিলিট করে দেয়
             io.emit('message-deleted', data.id);
