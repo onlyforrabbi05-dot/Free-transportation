@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telegram Live Feed</title>
+    <title>Telegram Live Feed with Delete</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -14,7 +14,28 @@
             flex-direction: column;
             align-items: center;
         }
-        h1 { color: #0088cc; }
+        h1 { color: #0088cc; margin-bottom: 10px; }
+        
+        .filter-container {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .filter-btn {
+            background-color: white;
+            border: 2px solid #0088cc;
+            color: #0088cc;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .filter-btn.active, .filter-btn:hover {
+            background-color: #0088cc;
+            color: white;
+        }
+
         #feed {
             width: 100%;
             max-width: 600px;
@@ -28,45 +49,76 @@
             border-radius: 10px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             word-wrap: break-word;
+            position: relative;
+            animation: fadeIn 0.5s ease;
         }
         .card img, .card video {
             width: 100%;
             border-radius: 8px;
             margin-top: 10px;
         }
+        
+        /* ডিলিট বাটনের স্টাইল */
+        .delete-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: #ff4d4d;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .delete-btn:hover { background-color: #cc0000; }
+
         .time {
             font-size: 12px;
             color: #888;
-            margin-top: 5px;
+            margin-top: 10px;
             text-align: right;
         }
         .caption {
             margin-top: 8px;
             font-weight: bold;
         }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
-    <!-- Socket.io ক্লায়েন্ট পাথ আপডেট করা হয়েছে -->
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
     <h1>📢 Telegram Live Feed</h1>
-    <div id="feed">
-        <div class="card">
-            <p>বটে কোনো মেসেজ পাঠালে তা এখানে লাইভ দেখাবে...</p>
-        </div>
+    
+    <div class="filter-container">
+        <button class="filter-btn active" onclick="filterFeed('all', this)">All</button>
+        <button class="filter-btn" onclick="filterFeed('image', this)">Photos</button>
+        <button class="filter-btn" onclick="filterFeed('video', this)">Videos</button>
     </div>
+
+    <div id="feed"></div>
 
     <script>
         const socket = io();
         const feed = document.getElementById('feed');
+        let currentFilter = 'all';
 
-        socket.on('tg-message', (data) => {
+        // কার্ড তৈরি করার ফাংশন
+        function createCard(data) {
             const card = document.createElement('div');
             card.className = 'card';
+            card.setAttribute('data-id', data.id); // ইউনিক আইডি সেট
+            card.setAttribute('data-type', data.type);
+
+            if (currentFilter !== 'all' && data.type !== currentFilter) {
+                card.style.display = 'none';
+            }
 
             let contentHTML = '';
-
             if (data.type === 'text') {
                 contentHTML = `<p>${data.content}</p>`;
             } else if (data.type === 'image') {
@@ -81,9 +133,79 @@
                 `;
             }
 
-            card.innerHTML = `${contentHTML}<div class="time">${data.time}</div>`;
+            // ডিলিট বাটন ও কন্টেন্ট সেট করা
+            card.innerHTML = `
+                <button class="delete-btn" onclick="deleteMessage('${data.id}')">🗑️ Delete</button>
+                ${contentHTML}
+                <div class="time">${data.time}</div>
+            `;
+            return card;
+        }
+
+        // ১. হিস্টোরি লোড করা
+        socket.on('history', (historyData) => {
+            feed.innerHTML = '';
+            if(historyData.length === 0) {
+                feed.innerHTML = '<div class="card" id="no-msg"><p style="text-align:center; color:#888;">কোনো মেসেজ নেই...</p></div>';
+                return;
+            }
+            historyData.forEach(data => {
+                const card = createCard(data);
+                feed.appendChild(card);
+            });
+        });
+
+        // ২. লাইভ নতুন মেসেজ আসা
+        socket.on('tg-message', (data) => {
+            const noMsg = document.getElementById('no-msg');
+            if (noMsg) noMsg.remove();
+
+            const card = createCard(data);
             feed.insertBefore(card, feed.firstChild);
         });
+
+        // ৩. সার্ভার থেকে ডিলিট কনফার্মেশন আসলে স্ক্রিন থেকে মুছে ফেলা
+        socket.on('message-deleted', (id) => {
+            const cardToRemove = document.querySelector(`[data-id="${id}"]`);
+            if (cardToRemove) {
+                cardToRemove.remove();
+            }
+            if (feed.children.length === 0) {
+                feed.innerHTML = '<div class="card" id="no-msg"><p style="text-align:center; color:#888;">কোনো মেসেজ নেই...</p></div>';
+            }
+        });
+
+        // ভুল পাসওয়ার্ড দিলে অ্যালার্ট দেওয়া
+        socket.on('delete-error', (msg) => {
+            alert(msg);
+        });
+
+        // ৪. ডিলিট বাটনে ক্লিক করলে কাজ
+        function deleteMessage(id) {
+            const password = prompt("মেসেজটি ডিলিট করতে পাসওয়ার্ড দিন:");
+            if (password) {
+                // সার্ভারে ডিলিট করার রিকোয়েস্ট পাঠানো
+                socket.emit('request-delete', { id: id, password: password });
+            }
+        }
+
+        // ৫. ফিল্টার ফাংশন
+        function filterFeed(type, button) {
+            currentFilter = type;
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+
+            const cards = document.querySelectorAll('.card');
+            cards.forEach(card => {
+                if(card.id === 'no-msg') return;
+                const cardType = card.getAttribute('data-type');
+                if (type === 'all' || cardType === type) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
     </script>
 </body>
-</html>
+    </html>
